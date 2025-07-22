@@ -5,7 +5,7 @@ from PyQt5.QtGui import QPixmap, QColor, QPalette, QImage
 from PyQt5.QtCore import Qt, QTimer
 import cv2
 from pyzbar import pyzbar
-from db_utils import buscar_aluno_por_matricula
+from db_utils import buscar_aluno_por_id
 from face_overlay import capturar_foto_automaticamente, detectar_rosto_e_overlay
 import cv2
 import numpy as np
@@ -75,13 +75,16 @@ class MainWindow(QWidget):
                     barcode_data = barcode.data.decode('utf-8')
                     barcode_type = barcode.type
                     print(f'Código detectado: {barcode_data}, tipo: {barcode_type}')
-                    if barcode_type == 'CODE128':
+                    if barcode_type in ['CODE128', 'CODE39']:
                         self.codigo_lido = barcode_data
                         print(f'Código lido: {self.codigo_lido}')
                         self.info_label.setText(f'Código lido: {self.codigo_lido}')
-                        aluno = buscar_aluno_por_matricula(self.codigo_lido)
+                        aluno = buscar_aluno_por_id(self.codigo_lido)
                         print(f'Resultado da busca no banco: {aluno}')
                         if aluno is not None:
+                            print('Tipo do aluno:', type(aluno))
+                            print('Campos do aluno:', aluno.keys())
+                            print('Conteúdo do aluno:', aluno)
                             data_nasc = str(aluno['data_nascimento']) if aluno['data_nascimento'] is not None else ''
                             dados = f"Nome: {aluno['nome']}\nMatrícula: {aluno['matricula']}\nNascimento: {data_nasc}\nCurso: {aluno['curso']}"
                             self.dados_aluno_label.setText(dados + '\nAguardando captura do rosto...')
