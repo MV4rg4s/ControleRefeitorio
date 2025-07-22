@@ -1,6 +1,6 @@
 PyQt5
 opencv-python
 pyzbar
-mysql-connector-python
+mariadb
 Pillow
-numpy 
+numpy
