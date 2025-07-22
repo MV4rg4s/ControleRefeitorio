@@ -1,6 +1,7 @@
 import mysql.connector
 import sys
 import traceback
+import cv2
 
 def conectar_db():
     return mysql.connector.connect(

@@ -82,7 +82,8 @@ class MainWindow(QWidget):
                         aluno = buscar_aluno_por_matricula(self.codigo_lido)
                         print(f'Resultado da busca no banco: {aluno}')
                         if aluno is not None:
-                            dados = f"Nome: {aluno['nome']}\nMatrícula: {aluno['matricula']}\nNascimento: {aluno['data_nascimento']}\nCurso: {aluno['curso']}"
+                            data_nasc = str(aluno['data_nascimento']) if aluno['data_nascimento'] is not None else ''
+                            dados = f"Nome: {aluno['nome']}\nMatrícula: {aluno['matricula']}\nNascimento: {data_nasc}\nCurso: {aluno['curso']}"
                             self.dados_aluno_label.setText(dados + '\nAguardando captura do rosto...')
                             self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
                             self.capturando_foto = True
