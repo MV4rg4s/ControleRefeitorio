@@ -1,17 +1,22 @@
 import sys
 import traceback
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget, QApplication, QFrame, QHBoxLayout
+from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget, QApplication, QHBoxLayout, QFrame, QGridLayout
 from PyQt5.QtGui import QPixmap, QColor, QPalette, QImage, QFont
 from PyQt5.QtCore import Qt, QTimer
 import cv2
 from pyzbar import pyzbar
-from db_utils import buscar_aluno_por_id, registrar_entrada_ou_saida, aluno_com_entrada_aberta
+# Certifique-se de que a função no db_utils se chama 'buscar_aluno_por_id' ou altere aqui
+from db_utils import buscar_aluno_por_id 
 from face_overlay import detectar_rosto_e_overlay
 import numpy as np
 
+# Hook para capturar exceções não tratadas e exibi-las no console
 def excecao_nao_tratada(exctype, value, tb):
-    print('Exceção não tratada:', exctype, value)
+    print('--- ERRO INESPERADO NA APLICAÇÃO ---')
     traceback.print_tb(tb)
+    print(f'TIPO: {exctype.__name__}')
+    print(f'MENSAGEM: {value}')
+    print('------------------------------------')
     sys.__excepthook__(exctype, value, tb)
 
 sys.excepthook = excecao_nao_tratada
@@ -19,178 +24,242 @@ sys.excepthook = excecao_nao_tratada
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Controle de Refeitório - IFF')
-        self.setGeometry(100, 100, 800, 600)
-        self.setup_ui()
+        # Configurações da Câmera e Timer
         self.cap = cv2.VideoCapture(0)
-        self.timer = QTimer()
+        self.timer = QTimer(self)
         self.timer.timeout.connect(self.atualizar_frame)
-        self.timer.start(30)
+        self.timer.start(30) # ~33 FPS
+
+        # Variáveis de estado
+        self.reset_state()
+        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        
+        # Inicialização da UI
+        self.setup_ui()
+
+    def reset_state(self):
+        """Reseta o estado da aplicação para a leitura inicial."""
         self.codigo_lido = None
         self.aluno_atual = None
         self.foto_aluno = None
+        self.capturando_foto = False
 
     def setup_ui(self):
-        # Gradiente de fundo
-        self.setStyleSheet('''
-            QWidget {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #e8ffe8, stop:1 #228B22);
-            }
-        ''')
-        main_layout = QVBoxLayout()
-        main_layout.setAlignment(Qt.AlignCenter)
-        main_layout.setContentsMargins(40, 40, 40, 40)
-        main_layout.setSpacing(20)
+        """Cria e organiza todos os widgets da interface."""
+        self.setWindowTitle('Controle de Refeitório - IFF')
+        self.setGeometry(100, 100, 800, 600)
 
-        # Logo do IFF
-        self.logo_label = QLabel(self)
-        self.logo_label.setAlignment(Qt.AlignCenter)
-        pixmap = QPixmap('logo_iff.png')
+        # Layout Principal
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # 1. Header (Cabeçalho)
+        header_frame = QFrame(self)
+        header_frame.setObjectName("header")
+        header_layout = QHBoxLayout(header_frame)
+        
+        logo_label = QLabel(self)
+        pixmap = QPixmap('logo_iff.png') # Certifique-se que o logo está na pasta
         if not pixmap.isNull():
-            self.logo_label.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        else:
-            self.logo_label.setText('IFF')
-            self.logo_label.setStyleSheet('color: #228B22; font-size: 36px; font-weight: bold;')
-        main_layout.addWidget(self.logo_label)
+            logo_label.setPixmap(pixmap.scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        
+        title_label = QLabel('Controle de Entrada e Saída do Refeitório', self)
+        title_label.setObjectName("title")
 
-        # Título
-        title = QLabel('Controle de Entrada e Saída do Refeitório')
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet('color: #228B22; font-size: 28px; font-weight: bold; letter-spacing: 1px;')
-        main_layout.addWidget(title)
+        header_layout.addWidget(logo_label)
+        header_layout.addSpacing(10)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        
+        main_layout.addWidget(header_frame)
 
-        # Cartão centralizado para dados do aluno
-        self.card = QFrame(self)
-        self.card.setStyleSheet('''
-            QFrame {
-                background: white;
-                border-radius: 18px;
-                box-shadow: 0px 4px 24px rgba(34,139,34,0.15);
-            }
-        ''')
-        card_layout = QVBoxLayout()
-        card_layout.setAlignment(Qt.AlignCenter)
-        card_layout.setContentsMargins(30, 30, 30, 30)
-        card_layout.setSpacing(18)
+        # 2. Content Area (Área de Conteúdo)
+        content_frame = QFrame(self)
+        content_layout = QHBoxLayout(content_frame)
+        content_layout.setContentsMargins(20, 20, 20, 20)
+        content_layout.setSpacing(20)
 
-        # Webcam com borda arredondada
-        self.video_label = QLabel(self)
-        self.video_label.setFixedSize(420, 320)
+        # 2.1. Painel de Vídeo
+        video_panel = QFrame(self)
+        video_panel.setObjectName("videoPanel")
+        video_layout = QVBoxLayout(video_panel)
+        self.video_label = QLabel('Iniciando câmera...', self)
         self.video_label.setAlignment(Qt.AlignCenter)
-        self.video_label.setStyleSheet('''
-            QLabel {
-                border-radius: 18px;
-                border: 3px solid #228B22;
-                background: #f6fff6;
+        video_layout.addWidget(self.video_label)
+        
+        # 2.2. Painel de Informações do Aluno
+        info_panel = QFrame(self)
+        info_panel.setObjectName("infoPanel")
+        info_layout = QGridLayout(info_panel)
+        info_layout.setContentsMargins(20, 20, 20, 20)
+
+        info_title = QLabel("Dados do Aluno", self)
+        info_title.setObjectName("infoTitle")
+        
+        # Labels e campos de dados
+        self.nome_label = QLabel("Nome:", self)
+        self.nome_valor = QLabel("-", self)
+        self.matricula_label = QLabel("Matrícula:", self)
+        self.matricula_valor = QLabel("-", self)
+        self.curso_label = QLabel("Curso:", self)
+        self.curso_valor = QLabel("-", self)
+        
+        info_layout.addWidget(info_title, 0, 0, 1, 2)
+        info_layout.addWidget(self.nome_label, 1, 0)
+        info_layout.addWidget(self.nome_valor, 1, 1)
+        info_layout.addWidget(self.matricula_label, 2, 0)
+        info_layout.addWidget(self.matricula_valor, 2, 1)
+        info_layout.addWidget(self.curso_label, 3, 0)
+        info_layout.addWidget(self.curso_valor, 3, 1)
+        info_layout.setColumnStretch(1, 1) # Faz a coluna de valor esticar
+
+        content_layout.addWidget(video_panel, 2) # Ocupa 2/3 do espaço
+        content_layout.addWidget(info_panel, 1)  # Ocupa 1/3 do espaço
+        
+        main_layout.addWidget(content_frame)
+
+        # 3. Status Bar (Barra de Status)
+        self.status_bar = QLabel("Aguardando leitura do código de barras...", self)
+        self.status_bar.setObjectName("statusBar")
+        self.status_bar.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(self.status_bar)
+
+        # Aplicar o Stylesheet
+        self.apply_stylesheet()
+
+    def apply_stylesheet(self):
+        """Aplica o QSS (CSS do Qt) para estilizar a aplicação."""
+        style = """
+            /* Fundo da janela principal */
+            QWidget {
+                background-color: #F0F0F0; /* Cinza claro */
             }
-        ''')
-        card_layout.addWidget(self.video_label)
+            /* Cabeçalho */
+            #header {
+                background-color: #008000; /* Verde IFF */
+                padding: 10px;
+            }
+            #title {
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+            }
+            /* Painéis de conteúdo */
+            #videoPanel, #infoPanel {
+                background-color: white;
+                border-radius: 10px;
+                border: 1px solid #DDDDDD;
+            }
+            #infoTitle {
+                font-size: 18px;
+                font-weight: bold;
+                color: #333;
+                border-bottom: 2px solid #008000;
+                margin-bottom: 15px;
+            }
+            /* Labels do painel de informações */
+            QLabel {
+                font-size: 14px;
+                color: #555;
+            }
+            /* Barra de Status */
+            #statusBar {
+                background-color: #333;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 12px;
+            }
+        """
+        self.setStyleSheet(style)
 
-        # Info label (feedback)
-        self.info_label = QLabel('Aguardando leitura do código de barras...')
-        self.info_label.setAlignment(Qt.AlignCenter)
-        self.info_label.setStyleSheet('color: #228B22; font-size: 18px; font-weight: bold;')
-        card_layout.addWidget(self.info_label)
+    def set_status_message(self, message, status='normal'):
+        """Atualiza a mensagem e cor da barra de status."""
+        self.status_bar.setText(message)
+        if status == 'success':
+            style = "background-color: #008000; color: white;" # Verde
+        elif status == 'error':
+            style = "background-color: #D32F2F; color: white;" # Vermelho
+        else: # normal
+            style = "background-color: #333; color: white;" # Cinza escuro
+        
+        self.status_bar.setStyleSheet(f"#statusBar {{ {style} padding: 12px; font-size: 16px; font-weight: bold; }}")
 
-        # Dados do aluno
-        self.dados_aluno_label = QLabel('')
-        self.dados_aluno_label.setAlignment(Qt.AlignCenter)
-        self.dados_aluno_label.setWordWrap(True)
-        self.dados_aluno_label.setStyleSheet('color: #333; font-size: 20px; font-weight: 500;')
-        card_layout.addWidget(self.dados_aluno_label)
-
-        self.card.setLayout(card_layout)
-        main_layout.addWidget(self.card, alignment=Qt.AlignCenter)
-        self.setLayout(main_layout)
-
+    def clear_student_info(self):
+        """Limpa os dados do painel de informações."""
+        self.nome_valor.setText("-")
+        self.matricula_valor.setText("-")
+        self.curso_valor.setText("-")
+        
     def atualizar_frame(self):
+        """Função principal executada pelo Timer para processar cada frame da câmera."""
         try:
             ret, frame = self.cap.read()
             if not ret:
-                print('Falha ao capturar frame da webcam')
+                self.set_status_message("Falha ao capturar frame da webcam", "error")
                 return
-            barcodes = pyzbar.decode(frame)
-            if not self.codigo_lido:
-                for barcode in barcodes:
-                    barcode_data = barcode.data.decode('utf-8')
-                    barcode_type = barcode.type
-                    print(f'Código detectado: {barcode_data}, tipo: {barcode_type}')
-                    if barcode_type in ['CODE128', 'CODE39']:
-                        self.codigo_lido = barcode_data
-                        print(f'Código lido: {self.codigo_lido}')
-                        self.info_label.setText(f'Código lido: {self.codigo_lido}')
-                        aluno = buscar_aluno_por_id(self.codigo_lido)
-                        print(f'Resultado da busca no banco: {aluno}')
-                        if aluno is not None:
-                            self.aluno_atual = aluno
-                            registro_aberto = aluno_com_entrada_aberta(aluno['id'])
-                            if registro_aberto:
-                                # Saída: registrar imediatamente, sem foto
-                                tipo, horario = registrar_entrada_ou_saida(aluno['id'], None)
-                                dados = f"<b>Nome:</b> {aluno['nome']}<br><b>Matrícula:</b> {aluno['matricula']}<br><b>Curso:</b> {aluno['curso']}"
-                                self.dados_aluno_label.setStyleSheet('color: #228B22; font-size: 22px; font-weight: bold;')
-                                self.dados_aluno_label.setText(dados + f'<br><span style="color:#228B22;">Saída registrada: {horario:%d/%m/%Y %H:%M:%S}</span>')
-                                self.info_label.setText('Saída realizada com sucesso!')
-                                QTimer.singleShot(3000, self.resetar_fluxo)
-                            else:
-                                # Entrada: seguir para captura de foto
-                                data_nasc = str(aluno['data_nascimento']) if aluno['data_nascimento'] is not None else ''
-                                dados = f"<b>Nome:</b> {aluno['nome']}<br><b>Matrícula:</b> {aluno['matricula']}<br><b>Nascimento:</b> {data_nasc}<br><b>Curso:</b> {aluno['curso']}"
-                                self.dados_aluno_label.setStyleSheet('color: #333; font-size: 20px; font-weight: 500;')
-                                self.dados_aluno_label.setText(dados + '<br><span style="color:#228B22;">Aguardando captura do rosto...</span>')
-                                self.info_label.setText('Aguardando captura do rosto...')
-                                self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-                                self.capturando_foto = True
-                        else:
-                            print('Aluno não encontrado!')
-                            self.dados_aluno_label.setStyleSheet('color: #c0392b; font-size: 20px; font-weight: bold;')
-                            self.dados_aluno_label.setText('Aluno não encontrado!')
-                            self.info_label.setText('Erro: Aluno não encontrado!')
-                        break
-            # Captura de foto e registro de entrada
-            if hasattr(self, 'capturando_foto') and self.capturando_foto:
-                overlay_frame, centralizado, bbox = detectar_rosto_e_overlay(frame, self.face_cascade)
+
+            processed_frame = frame.copy()
+
+            # Se um aluno já foi lido, passa para a fase de captura de foto
+            if self.capturando_foto:
+                processed_frame, centralizado, bbox = detectar_rosto_e_overlay(frame, self.face_cascade)
                 if centralizado:
                     x, y, w, h = bbox
                     self.foto_aluno = frame[y:y+h, x:x+w]
-                    self.dados_aluno_label.setText(self.dados_aluno_label.text() + '<br><span style="color:#228B22;">Foto capturada!</span>')
-                    self.info_label.setText('Foto capturada!')
+                    self.set_status_message("Foto capturada com sucesso!", "success")
                     self.capturando_foto = False
-                    # Registrar entrada
-                    if self.aluno_atual is not None:
-                        try:
-                            tipo, horario = registrar_entrada_ou_saida(self.aluno_atual['id'], self.foto_aluno)
-                            self.dados_aluno_label.setStyleSheet('color: #228B22; font-size: 22px; font-weight: bold;')
-                            self.dados_aluno_label.setText(self.dados_aluno_label.text() + f'<br><span style="color:#228B22;">Entrada registrada: {horario:%d/%m/%Y %H:%M:%S}</span>')
-                            self.info_label.setText('Entrada realizada com sucesso!')
-                            QTimer.singleShot(3000, self.resetar_fluxo)
-                        except Exception as e:
-                            self.dados_aluno_label.setStyleSheet('color: #c0392b; font-size: 20px; font-weight: bold;')
-                            self.dados_aluno_label.setText(self.dados_aluno_label.text() + f'<br>Erro ao registrar: {e}')
-                            self.info_label.setText('Erro ao registrar entrada!')
-                rgb_image = cv2.cvtColor(overlay_frame, cv2.COLOR_BGR2RGB)
+                    # Aqui você salvaria a foto e o registro no banco
+                    # Ex: salvar_registro(self.aluno_atual['id'], self.foto_aluno)
+                    QTimer.singleShot(3000, self.reset_and_clear) # Reseta após 3 segundos
             else:
-                # Desenhar retângulo nos códigos detectados
-                for barcode in barcodes:
-                    (x, y, w, h) = barcode.rect
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb_image.shape
-            bytes_per_line = ch * w
-            qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            self.video_label.setPixmap(QPixmap.fromImage(qt_image).scaled(420, 320, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        except Exception as e:
-            print('Erro em atualizar_frame:', e)
+                # Se não, continua tentando ler o código de barras
+                barcodes = pyzbar.decode(frame)
+                if barcodes:
+                    for barcode in barcodes:
+                        if not self.codigo_lido: # Processa apenas o primeiro código
+                            barcode_data = barcode.data.decode('utf-8')
+                            self.codigo_lido = barcode_data
+                            
+                            aluno = buscar_aluno_por_id(self.codigo_lido)
+                            if aluno:
+                                self.aluno_atual = aluno
+                                self.nome_valor.setText(aluno.get('nome', 'N/A'))
+                                self.matricula_valor.setText(aluno.get('matricula', 'N/A'))
+                                self.curso_valor.setText(aluno.get('curso', 'N/A'))
+                                self.set_status_message("Aluno encontrado! Encaixe o rosto para a foto.", "success")
+                                self.capturando_foto = True
+                            else:
+                                self.set_status_message(f"Aluno com ID '{self.codigo_lido}' não encontrado!", "error")
+                                self.clear_student_info()
+                                QTimer.singleShot(3000, self.reset_and_clear) # Reseta após 3 segundos
+                            break # Sai do loop de barcodes
 
-    def resetar_fluxo(self):
-        self.codigo_lido = None
-        self.aluno_atual = None
-        self.foto_aluno = None
-        self.info_label.setText('Aguardando leitura do código de barras...')
-        self.dados_aluno_label.setText('')
+            # Exibe o frame processado na tela
+            self.display_image(processed_frame)
+
+        except Exception as e:
+            print(f"Erro em atualizar_frame: {e}")
+            traceback.print_exc()
+
+    def reset_and_clear(self):
+        """Função para limpar os dados e o status para uma nova leitura."""
+        self.reset_state()
+        self.clear_student_info()
+        self.set_status_message("Aguardando leitura do código de barras...")
+
+    def display_image(self, img):
+        """Converte uma imagem do OpenCV para QPixmap e exibe no QLabel."""
+        rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb_image.shape
+        bytes_per_line = ch * w
+        qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qt_image)
+        self.video_label.setPixmap(pixmap.scaled(self.video_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def closeEvent(self, event):
+        """Libera a câmera ao fechar a janela."""
         self.cap.release()
         super().closeEvent(event)
 
@@ -198,4 +267,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_()) 
+    sys.exit(app.exec_())
