@@ -9,17 +9,17 @@ python -m pip install --upgrade pip
 
 echo.
 echo Instalando dependencias principais...
-pip install opencv-python==4.8.1.78
+pip install opencv-python==4.12.0.88
 pip install PyQt5==5.15.9
 pip install pyzbar==0.1.9
-pip install Pillow==10.0.1
-pip install mariadb==1.1.8
-pip install numpy==1.24.3
+pip install Pillow==11.3.0
+pip install mariadb==1.1.13
+pip install numpy==2.2.6
 
 echo.
 echo Instalando dependencias para relatorios e graficos...
-pip install pandas==2.0.3
-pip install matplotlib==3.7.2
+pip install pandas==2.3.1
+pip install matplotlib==3.10.5
 
 echo.
 echo ========================================

@@ -7,17 +7,36 @@ def detectar_rosto_e_overlay(frame, face_cascade):
     overlay_frame = frame.copy()
     rosto_centralizado = False
     bbox = None
+    
+    # Desenhar oval guia no centro da tela
+    frame_h, frame_w = frame.shape[:2]
+    center_x, center_y = frame_w // 2, frame_h // 2
+    cv2.ellipse(overlay_frame, (center_x, center_y), (80, 100), 0, 0, 360, (0, 255, 0), 2)
+    
+    # Adicionar texto de instrução
+    cv2.putText(overlay_frame, 'Encaixe seu rosto', (30, 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    
     for (x, y, w, h) in faces:
-        # Desenhar oval (overlay)
-        center = (x + w // 2, y + h // 2)
-        axes = (w // 2, h // 2)
-        cv2.ellipse(overlay_frame, center, axes, 0, 0, 360, (0, 255, 0), 3)
-        # Critério de centralização (ajuste conforme necessário)
-        frame_h, frame_w = frame.shape[:2]
-        if (abs(center[0] - frame_w // 2) < 40) and (abs(center[1] - frame_h // 2) < 40):
+        # Desenhar oval ao redor do rosto detectado
+        face_center = (x + w // 2, y + h // 2)
+        face_axes = (w // 2, h // 2)
+        
+        # Verificar se o rosto está centralizado
+        if (abs(face_center[0] - center_x) < 50) and (abs(face_center[1] - center_y) < 50):
+            # Rosto centralizado - desenhar em verde
+            cv2.ellipse(overlay_frame, face_center, face_axes, 0, 0, 360, (0, 255, 0), 3)
             rosto_centralizado = True
             bbox = (x, y, w, h)
+            cv2.putText(overlay_frame, 'ROSTO CENTRALIZADO!', (30, 60), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        else:
+            # Rosto não centralizado - desenhar em vermelho
+            cv2.ellipse(overlay_frame, face_center, face_axes, 0, 0, 360, (0, 0, 255), 2)
+            cv2.putText(overlay_frame, 'Centralize o rosto', (30, 60), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         break  # Só considera o primeiro rosto
+    
     return overlay_frame, rosto_centralizado, bbox
 
 def capturar_foto_automaticamente():
