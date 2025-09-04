@@ -217,15 +217,10 @@ class ModernMainWindow(QWidget):
         # Botões de ação
         buttons_layout = QHBoxLayout()
         
-        self.btn_gerar_relatorio = QPushButton("Gerar Relatório", self)
-        self.btn_gerar_relatorio.setObjectName("actionButton")
-        self.btn_gerar_relatorio.clicked.connect(self.gerar_relatorio_rapido)
-        
         self.btn_limpar = QPushButton("Limpar", self)
         self.btn_limpar.setObjectName("secondaryButton")
         self.btn_limpar.clicked.connect(self.reset_and_clear)
         
-        buttons_layout.addWidget(self.btn_gerar_relatorio)
         buttons_layout.addWidget(self.btn_limpar)
         
         info_layout.addLayout(buttons_layout)
@@ -992,51 +987,6 @@ class ModernMainWindow(QWidget):
             
             # Fechar automaticamente após 2 segundos
             QTimer.singleShot(2000, popup.close)
-
-    def gerar_relatorio_rapido(self):
-        """Gera um relatório rápido do dia atual."""
-        try:
-            data_hoje = datetime.date.today()
-            
-            # Obter turnos selecionados
-            turnos_selecionados = []
-            if self.cb_cafe_manha.isChecked():
-                turnos_selecionados.append('Café da Manhã')
-            if self.cb_almoco.isChecked():
-                turnos_selecionados.append('Almoço')
-            if self.cb_cafe_tarde.isChecked():
-                turnos_selecionados.append('Café da Tarde')
-            if self.cb_janta.isChecked():
-                turnos_selecionados.append('Janta')
-            
-            # Se nenhum turno selecionado, usar todos
-            if not turnos_selecionados:
-                turnos_selecionados = ['Café da Manhã', 'Almoço', 'Café da Tarde', 'Janta']
-            
-            registros = relatorio_diario(data_hoje, turnos_filtro=turnos_selecionados)
-            
-            if not registros:
-                QMessageBox.information(self, "Relatório Diário", "Nenhum registro encontrado para hoje.")
-                return
-            
-            msg = f"Relatório Diário - {data_hoje.strftime('%d/%m/%Y')}\n\n"
-            msg += f"Turnos incluídos: {', '.join(turnos_selecionados)}\n"
-            msg += f"Total de entradas: {len(registros)}\n\n"
-            
-            turnos = {}
-            for registro in registros:
-                turno = registro.get('turno', 'Outros')
-                if turno not in turnos:
-                    turnos[turno] = []
-                turnos[turno].append(registro)
-            
-            for turno, lista_registros in turnos.items():
-                msg += f"{turno}: {len(lista_registros)} entradas\n"
-            
-            QMessageBox.information(self, "Relatório Diário", msg)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Erro", f"Erro ao gerar relatório: {e}")
 
     def gerar_relatorio_turno(self):
         """Gera relatório por turno."""
