@@ -234,6 +234,11 @@ def conectar_db():
 - Registro automático
 - Interface PyQt5
 
+## 📞 Contato
+
+- **Matheus Vargas**: 📱 (22) 98848-4742  
+- **Arthur Miguelito**: 📱 (22) 99971-1856
+
 ## 📄 Licença
 
 Desenvolvido para o **Instituto Federal Fluminense (IFF)**.
@@ -249,4 +254,5 @@ Desenvolvido para o **Instituto Federal Fluminense (IFF)**.
 [![IFF](https://img.shields.io/badge/IFF-Instituto%20Federal%20Fluminense-blue.svg)](https://iff.edu.br)
 
 </div>
+
 
